@@ -1,0 +1,14 @@
+surya-ocr
+paddlepaddle
+paddleocr
+opencv-python
+Pillow
+langchain-community
+langchain-core
+# For table extraction (tabled) - note: might need specific git install
+# For chart extraction
+httpx
+# For async VLM captioning
+aiohttp
+# For viewer app
+streamlit
