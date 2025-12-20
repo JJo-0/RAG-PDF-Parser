@@ -19,39 +19,30 @@ RAG/
 ├── main.py                      # CLI 진입점
 ├── streamlit_viewer.py          # 마크다운 뷰어 (번역/중복검사 포함)
 ├── src/
-│   ├── layout/
-│   │   └── detector.py          # Surya 레이아웃 감지
-│   ├── text/
-│   │   └── extractor.py         # PaddleOCR 텍스트 추출 (배치 지원)
-│   ├── captioning/
-│   │   └── vlm.py               # AI 캡션 생성 (비동기 배치)
-│   ├── translation/
-│   │   └── translator.py        # 번역 모듈 (영↔한, 문단별)
-│   ├── dedup/
-│   │   └── deduplicator.py      # 중복 검사 (PDF/이미지/URL)
+│   ├── layout/detector.py       # Surya 레이아웃 감지
+│   ├── text/extractor.py        # PaddleOCR 텍스트 추출 (배치 지원)
+│   ├── captioning/vlm.py        # AI 캡션 생성 (비동기 배치)
+│   ├── translation/translator.py # 번역 모듈 (영↔한, 문단별)
+│   ├── dedup/deduplicator.py    # 중복 검사 (PDF/이미지/URL)
 │   ├── processing/
 │   │   ├── aggregator.py        # 파이프라인 오케스트레이터
 │   │   └── heading.py           # 제목 레벨 감지
-│   ├── table/
-│   │   └── extractor.py         # 표 추출 (tabled)
-│   └── chart/
-│       └── extractor.py         # 차트 데이터 추출
-├── output/                      # 파싱 결과물
-│   ├── *.md                     # 마크다운 파일
-│   ├── images/                  # 추출된 이미지
-│   └── .dedup_db.json           # 중복 검사 DB
-└── tests/                       # 테스트/디버그 스크립트
+│   ├── table/extractor.py       # 표 추출
+│   └── chart/extractor.py       # 차트 데이터 추출
+├── scripts/                     # CLI 도구 모음
+│   ├── translate_file.py        # 단일 파일 번역
+│   ├── batch_translate.py       # 배치 번역
+│   ├── code_review.py           # AI 코드 리뷰
+│   ├── research.py              # 논문 분석 도구
+│   ├── data_analysis.py         # 데이터 분석
+│   └── markdown_gen.py          # 마크다운 생성
+├── templates/                   # 문서 템플릿
+│   ├── paper_summary.md         # 논문 요약 템플릿
+│   ├── blog.md                  # 블로그 템플릿
+│   └── analysis_report.md       # 분석 리포트 템플릿
+├── SKILL*.md                    # 스킬 정의 파일들
+└── output/                      # 파싱 결과물
 ```
-
-## 주요 파일
-- `main.py`: PDF 파싱 파이프라인 진입점
-- `src/processing/aggregator.py`: 모든 모듈 통합, 배치 OCR/VLM 최적화
-- `src/layout/detector.py`: Surya 모델로 레이아웃 블록 감지
-- `src/text/extractor.py`: PaddleOCR + Column-Aware 정렬
-- `src/captioning/vlm.py`: Ollama VLM 비동기 캡션 생성
-- `src/translation/translator.py`: 영↔한 번역, 문단별 진행, 병렬 표시
-- `src/dedup/deduplicator.py`: SHA-256/Perceptual hash 기반 중복 검사
-- `streamlit_viewer.py`: 결과 미리보기 + 실시간 번역 + 중복 검사 UI
 
 ## 사용법
 
@@ -65,33 +56,66 @@ python main.py "path/to/document.pdf" --output_dir output
 python -m streamlit run streamlit_viewer.py
 ```
 
-## 주요 기능
+## 스킬 (Skills)
 
-### 1. 번역 (Translation)
-- 영어 ↔ 한국어 양방향
-- 문단별 번역 (진행률 표시)
-- 원문 아래 번역문 병렬 표시
-- 모델: `gpt-oss:20b`
+### 1. Translation (번역)
+```bash
+# 단일 파일
+python scripts/translate_file.py doc.md --direction en2ko --bilingual
 
-### 2. 중복 검사 (Deduplication)
-- PDF: SHA-256 파일 해시
-- 이미지: Perceptual hash (유사 이미지 감지)
-- URL: 정규화된 해시
-- JSON DB 저장 (`output/.dedup_db.json`)
+# 배치 처리
+python scripts/batch_translate.py ./docs/ --direction en2ko --parallel
+```
 
-### 3. Streamlit 뷰어
-- 📖 Viewer: 마크다운 렌더링 + 번역
-- 🔍 Duplicates: 중복 검사 + DB 관리
+### 2. Code Review (코드 리뷰)
+```bash
+python scripts/code_review.py src/main.py
+python scripts/code_review.py src/ --recursive --output review.md
+```
+
+### 3. Research (논문 분석)
+```bash
+# 논문 분석
+python scripts/research.py analyze paper.md --output notes/
+
+# 읽기 큐 관리
+python scripts/research.py queue add paper.pdf --priority high
+python scripts/research.py queue list
+```
+
+### 4. Data Analysis (데이터 분석)
+```bash
+python scripts/data_analysis.py eda data.csv --output report.md
+python scripts/data_analysis.py analyze data.csv --type correlation
+```
+
+### 5. Markdown Generation (문서 생성)
+```bash
+# README 생성
+python scripts/markdown_gen.py readme --name "Project" --output README.md
+
+# 코드 문서화
+python scripts/markdown_gen.py from-code src/module.py --output docs/
+
+# 블로그 포스트
+python scripts/markdown_gen.py blog --topic "AI Trends" --output blog/ai.md
+```
 
 ## 작업 시 주의사항
-- **Ollama 서버**: VLM/번역 기능 사용 시 Ollama가 실행 중이어야 함
-  ```bash
-  ollama serve
-  ollama pull qwen3-vl:8b
-  ollama pull gpt-oss:20b
-  ```
-- **PaddleOCR GPU**: CUDA 사용 시 `paddlepaddle-gpu` 설치 필요
-- **배치 처리**: `aggregator.py`에서 OCR/VLM 배치 처리로 성능 최적화됨
+
+### Ollama 모델
+```bash
+ollama serve
+ollama pull qwen3-vl:8b      # VLM 캡션
+ollama pull gpt-oss:20b      # 번역
+ollama pull qwen2.5-coder:7b # 코드 리뷰
+ollama pull qwen3:8b         # 일반 분석
+ollama pull mistral:7b       # 데이터 분석
+```
+
+### GPU/CUDA
+- PaddleOCR GPU: `paddlepaddle-gpu` 설치 필요
+- Surya: CUDA 자동 감지
 
 ## 데이터 플로우
 ```
