@@ -1,79 +1,231 @@
+"""
+RAG PDF Parser - Main Entry Point
+
+Processes PDF documents for RAG applications with full metadata preservation.
+"""
+
 import os
 import argparse
 import fitz  # PyMuPDF
-from PIL import Image
 from warnings import filterwarnings
 
-# Import our custom modules
-from src.processing.aggregator import MarkdownAggregator
+# Import IR pipeline components
+from src.processing.ir_processor import IRPipelineProcessor, process_pdf_file
+from src.processing.chunking import chunk_ir_document
+from src.output.writer import OutputWriter
+from src.config import ProcessorConfig
+from src.models.chunk import ChunkingConfig
 
 # Suppress warnings
 filterwarnings("ignore")
 
-def pdf_to_images(pdf_path):
-    """
-    Convert all pages of a PDF to PIL Images.
-    """
-    doc = fitz.open(pdf_path)
-    images = []
-    
-    print(f"  - Rendering {len(doc)} pages from PDF...")
-    for page_num in range(len(doc)):
-        page = doc.load_page(page_num)
-        pix = page.get_pixmap(dpi=200) # 200 DPI is usually good balance
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        images.append(img)
-        
-    doc.close()
-    return images
 
-def process_file(pdf_path, output_dir, aggregator):
+def process_file(pdf_path: str, config: ProcessorConfig, processor: IRPipelineProcessor):
     """
-    Process a single PDF file.
+    Process a single PDF file with the IR pipeline.
+
+    Args:
+        pdf_path: Path to PDF file
+        config: Processing configuration
+        processor: IR Pipeline Processor instance
     """
+    from src.models.block import IRDocument
+
     base_name = os.path.basename(pdf_path)
     file_name = os.path.splitext(base_name)[0]
-    output_path = os.path.join(output_dir, f"{file_name}.md")
-    
-    # Open the PDF document
+
+    print(f"\n{'='*60}")
+    print(f"Processing: {base_name}")
+    print(f"{'='*60}")
+
+    # Check for duplicates if enabled
+    if config.enable_dedup and processor.deduplicator:
+        existing = processor.deduplicator.check_pdf(pdf_path)
+        if existing:
+            print(f"  [SKIP] Duplicate detected: {existing.get('filename', 'unknown')}")
+            return
+
+    # Generate document ID
+    doc_id = IRDocument.generate_doc_id(pdf_path)
+    print(f"  Document ID: {doc_id}")
+
+    # Open and process document
     doc = fitz.open(pdf_path)
+    ir_doc = processor.process_document(doc, doc_id)
 
-    print(f"[{base_name}] Processing PDF for Markdown generation...")
-    markdown_content = aggregator.aggregate(doc, output_dir) # Pass the fitz.Document object
+    # Create output writer
+    writer = OutputWriter(config.output_dir)
 
-    # Close the document after processing
+    # Determine output directory
+    if config.output_mode == "markdown":
+        # Legacy mode: output directly to output_dir
+        output_dir = config.output_dir
+    else:
+        # New mode: create doc-specific directory
+        output_dir = writer.get_doc_output_dir(doc_id)
+
+    # Save images
+    print(f"  Saving images...")
+    processor.save_images(ir_doc, doc, output_dir)
+
+    # Generate outputs based on mode
+    if config.output_mode in ("markdown", "both"):
+        print(f"  Generating Markdown...")
+        if config.output_mode == "markdown":
+            # Legacy filename format
+            md_path = writer.write_markdown(
+                ir_doc, output_dir, config.with_anchors,
+                filename=f"{file_name}.md"
+            )
+        else:
+            md_path = writer.write_markdown(ir_doc, output_dir, config.with_anchors)
+        print(f"    -> {md_path}")
+
+    if config.output_mode in ("jsonl", "both"):
+        print(f"  Generating JSONL blocks...")
+        jsonl_path = writer.write_ir_jsonl(ir_doc, output_dir)
+        print(f"    -> {jsonl_path}")
+
+        print(f"  Generating metadata...")
+        meta_path = writer.write_metadata(ir_doc, output_dir)
+        print(f"    -> {meta_path}")
+
+    # Generate chunks if requested
+    if config.enable_chunking:
+        print(f"  Generating chunks (size={config.chunk_size})...")
+        chunk_config = ChunkingConfig(
+            chunk_size=config.chunk_size,
+            overlap_tokens=config.chunk_overlap,
+            respect_sections=config.respect_sections
+        )
+        chunks = chunk_ir_document(ir_doc, chunk_config)
+        chunks_path = writer.write_chunks_jsonl(chunks, output_dir)
+        print(f"    -> {chunks_path} ({len(chunks)} chunks)")
+
+    # Register in dedup database if enabled
+    if config.enable_dedup and processor.deduplicator:
+        processor.deduplicator.register_pdf(pdf_path, ir_doc.total_pages)
+
     doc.close()
-    
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(markdown_content)
-        
-    print(f"[{base_name}] Saved to {output_path}")
+
+    print(f"  Done!")
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Local RAG PDF Parser")
-    parser.add_argument("input_path", type=str, help="Path to PDF file or directory containing PDFs")
-    parser.add_argument("--output_dir", type=str, default="output", help="Directory to save Markdown files")
+    parser = argparse.ArgumentParser(
+        description="RAG PDF Parser - Extract structured content from PDFs",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic markdown output (legacy mode)
+  python main.py document.pdf
+
+  # Full IR output with chunks
+  python main.py document.pdf --output_mode both --chunk
+
+  # With translation
+  python main.py document.pdf --translate --target_lang ko
+
+  # Process directory
+  python main.py ./papers/ --output_mode jsonl --chunk
+        """
+    )
+
+    # Input/Output
+    parser.add_argument("input_path", type=str,
+                        help="Path to PDF file or directory")
+    parser.add_argument("--output_dir", type=str, default="output",
+                        help="Output directory (default: output)")
+
+    # Output mode
+    parser.add_argument("--output_mode", type=str,
+                        choices=["markdown", "jsonl", "both"],
+                        default="markdown",
+                        help="Output format (default: markdown)")
+    parser.add_argument("--with_anchors", action="store_true",
+                        help="Add citation anchors to markdown")
+
+    # Chunking
+    parser.add_argument("--chunk", action="store_true",
+                        help="Generate pre-chunked output for embedding")
+    parser.add_argument("--chunk_size", type=int, default=1000,
+                        help="Target chunk size in tokens (default: 1000)")
+    parser.add_argument("--chunk_overlap", type=int, default=100,
+                        help="Overlap between chunks (default: 100)")
+
+    # Translation
+    parser.add_argument("--translate", action="store_true",
+                        help="Include translation in output")
+    parser.add_argument("--target_lang", type=str, default="en",
+                        help="Translation target language (default: en)")
+    parser.add_argument("--bilingual", action="store_true",
+                        help="Output both original and translation")
+
+    # Deduplication
+    parser.add_argument("--dedup", action="store_true",
+                        help="Skip duplicate documents")
+
+    # Processing options
+    parser.add_argument("--dpi", type=int, default=200,
+                        help="PDF rendering DPI (default: 200)")
+    parser.add_argument("--ocr_lang", type=str, default="korean",
+                        help="OCR language (default: korean)")
+    parser.add_argument("--vlm_model", type=str, default="qwen3-vl:8b",
+                        help="VLM model for captioning (default: qwen3-vl:8b)")
+
     args = parser.parse_args()
 
+    # Build configuration
+    config = ProcessorConfig(
+        output_mode=args.output_mode,
+        with_anchors=args.with_anchors,
+        output_dir=args.output_dir,
+        enable_chunking=args.chunk,
+        chunk_size=args.chunk_size,
+        chunk_overlap=args.chunk_overlap,
+        enable_translation=args.translate,
+        target_lang=args.target_lang,
+        bilingual_output=args.bilingual,
+        enable_dedup=args.dedup,
+        dpi=args.dpi,
+        ocr_lang=args.ocr_lang,
+        vlm_model=args.vlm_model
+    )
+
     # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(config.output_dir, exist_ok=True)
 
-    # Initialize generic aggregator (loads models once)
-    aggregator = MarkdownAggregator()
+    # Initialize processor
+    print("Initializing RAG PDF Parser...")
+    processor = IRPipelineProcessor(config)
 
+    # Process input
     if os.path.isdir(args.input_path):
         # Process all PDFs in directory
         files = [f for f in os.listdir(args.input_path) if f.lower().endswith('.pdf')]
-        print(f"Found {len(files)} PDF files in {args.input_path}")
-        
+        print(f"\nFound {len(files)} PDF files in {args.input_path}")
+
         for f in files:
             full_path = os.path.join(args.input_path, f)
-            process_file(full_path, args.output_dir, aggregator)
-            
+            try:
+                process_file(full_path, config, processor)
+            except Exception as e:
+                print(f"  [ERROR] Failed to process {f}: {e}")
+
     elif os.path.isfile(args.input_path) and args.input_path.lower().endswith('.pdf'):
-        process_file(args.input_path, args.output_dir, aggregator)
+        process_file(args.input_path, config, processor)
+
     else:
-        print("Error: Invalid input path. Please provide a PDF file or a directory containing PDFs.")
+        print("Error: Invalid input. Please provide a PDF file or directory.")
+        return 1
+
+    print(f"\n{'='*60}")
+    print("Processing complete!")
+    print(f"Output directory: {os.path.abspath(config.output_dir)}")
+    print(f"{'='*60}")
+
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    exit(main())
