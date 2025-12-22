@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-pdf-parser"
+version = "2.0.0"
+description = "RAG용 PDF 파서 - 레이아웃 인식, OCR, VLM 캡션, 번역 기능 포함"
+authors = [
+    {name = "RAG PDF Parser Team"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+keywords = ["pdf", "parser", "rag", "ocr", "layout-detection", "vlm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "PyMuPDF>=1.24.0",
+    "surya-ocr>=0.6.6",
+    "paddlepaddle>=2.6.0",
+    "paddleocr>=2.8.0",
+    "pillow>=10.0.0",
+    "requests>=2.31.0",
+    "aiohttp>=3.9.0",
+    "streamlit>=1.30.0",
+    "numpy>=1.24.0",
+    "python-dotenv>=1.0.0",
+    "tiktoken>=0.5.0",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "paddlepaddle-gpu>=2.6.0",
+]
+
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+all = [
+    "rag-pdf-parser[gpu,dev]"
+]
+
+[project.scripts]
+rag-pdf-parser = "main:main"
+rag-viewer = "streamlit_viewer:main"
+
+[project.urls]
+Homepage = "https://github.com/yourusername/rag-pdf-parser"
+Repository = "https://github.com/yourusername/rag-pdf-parser"
+Issues = "https://github.com/yourusername/rag-pdf-parser/issues"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.setuptools.package-data]
+src = ["**/*.json", "**/*.txt"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501", "N803", "N806"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"

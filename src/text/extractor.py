@@ -25,7 +25,8 @@ class TextExtractor:
             lang: OCR language ('korean', 'en', 'ch', etc.)
         """
         print(f"Loading Text Extractor (PaddleOCR) [lang={lang}]...")
-        self.ocr = PaddleOCR(use_angle_cls=True, lang=lang, show_log=False)
+        # Note: show_log parameter removed in newer PaddleOCR versions
+        self.ocr = PaddleOCR(use_angle_cls=True, lang=lang)
         self.lang = lang
 
     def extract_text(self, image: Image.Image, bbox: Optional[List[float]] = None) -> Tuple[str, List[Dict]]:
@@ -249,7 +250,7 @@ class TextExtractor:
             d_boxes = res_item.get('dt_polys', res_item.get('dt_boxes', []))
 
         raw_lines = []
-        count = min(len(d_texts), len(d_boxes)) if d_boxes else len(d_texts)
+        count = min(len(d_texts), len(d_boxes)) if len(d_boxes) > 0 else len(d_texts)
 
         for i in range(count):
             raw_lines.append({

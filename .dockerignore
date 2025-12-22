@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Development
+.git/
+.github/
+.gitignore
+*.md
+!README.md
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+tests/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+
+# Output
+output/
+data/
+*.db
+.cache.db
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Documentation
+docs/
+CLAUDE.md
+SKILL*.md

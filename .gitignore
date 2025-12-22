@@ -44,14 +44,18 @@ env/
 Thumbs.db
 
 # Project specific
-output/images/
-output/*.md
-output/.dedup_db.json
-output/.temp_*
+output/*/
+!output/.gitkeep
+*.db
+*.jsonl
+.cache.db
 
-# Model cache
+# Model cache (downloaded model files, not source code)
 .cache/
-models/
+/models/
+*.pth
+*.onnx
+*.safetensors
 
 # Logs
 *.log

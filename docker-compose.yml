@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # RAG PDF Parser with Streamlit viewer
+  rag-parser:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: final
+    container_name: rag-pdf-parser
+    ports:
+      - "8501:8501"  # Streamlit viewer
+    volumes:
+      - ./data:/app/data          # Input PDFs
+      - ./output:/app/output      # Processing results
+      - ./templates:/app/templates # Document templates
+    environment:
+      - DISABLE_MODEL_SOURCE_CHECK=True
+      - PYTHONUNBUFFERED=1
+    command: streamlit run streamlit_viewer.py --server.address 0.0.0.0
+    restart: unless-stopped
+
+  # Ollama service for VLM and translation
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # GPU-accelerated parser (optional)
+  rag-parser-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gpu
+    container_name: rag-pdf-parser-gpu
+    ports:
+      - "8502:8501"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./templates:/app/templates
+    environment:
+      - DISABLE_MODEL_SOURCE_CHECK=True
+      - PYTHONUNBUFFERED=1
+      - CUDA_VISIBLE_DEVICES=0
+    command: streamlit run streamlit_viewer.py --server.address 0.0.0.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles: ["gpu"]
+    restart: unless-stopped
+
+volumes:
+  ollama-data:
+    driver: local
