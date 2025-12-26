@@ -38,6 +38,11 @@ class ProcessorConfig:
     enable_dedup: bool = False           # Skip duplicate documents
     dedup_db_path: str = "output/.dedup_db.json"
 
+    # Page merging settings
+    merge_pages: bool = False            # Merge split sentences across page boundaries
+    merge_model: str = "qwen3:32b-q4_K_M"  # Model for page merge detection
+    merge_context_chars: int = 500       # Context chars around page boundary
+
     # VLM/Captioning settings
     vlm_model: str = "qwen3-vl:8b"       # VLM model for captioning
     vlm_concurrency: int = 3             # Max concurrent VLM requests
@@ -76,9 +81,9 @@ class ProcessorConfig:
             'target_lang': 'target_lang',
             'bilingual': 'bilingual_output',
             'dedup': 'enable_dedup',
+            'merge_pages': 'merge_pages',
             'dpi': 'dpi',
             'vlm_model': 'vlm_model',
-            'ocr_lang': 'ocr_lang',
         }
 
         for arg_name, config_name in arg_mapping.items():

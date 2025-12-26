@@ -41,6 +41,7 @@ RAG/
 │   ├── processing/
 │   │   ├── ir_processor.py          # IR 파이프라인 프로세서 (핵심)
 │   │   ├── chunking.py              # IR 인식 청킹
+│   │   ├── page_merger.py           # LLM 기반 페이지 병합
 │   │   ├── scheduler.py             # GPU 스테이지 스케줄러
 │   │   └── heading.py               # 제목 레벨 감지
 │   ├── output/
@@ -85,6 +86,9 @@ python main.py document.pdf --output_mode both --chunk --with_anchors
 
 # 중복 제거
 --dedup                               # 중복 문서 스킵
+
+# 페이지 병합 (NEW!)
+--merge_pages                         # 페이지 경계 끊긴 문장 자동 병합 (LLM 기반)
 
 # 처리 옵션
 --dpi 200                             # PDF 렌더링 DPI

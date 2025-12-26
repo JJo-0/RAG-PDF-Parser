@@ -12,6 +12,7 @@ from warnings import filterwarnings
 # Import IR pipeline components
 from src.processing.ir_processor import IRPipelineProcessor, process_pdf_file
 from src.processing.chunking import chunk_ir_document
+from src.processing.page_merger import PageMerger
 from src.output.writer import OutputWriter
 from src.config import ProcessorConfig
 from src.models.chunk import ChunkingConfig
@@ -82,6 +83,17 @@ def process_file(pdf_path: str, config: ProcessorConfig, processor: IRPipelinePr
             md_path = writer.write_markdown(ir_doc, output_dir, config.with_anchors)
         print(f"    -> {md_path}")
 
+        # Merge pages if requested
+        if config.merge_pages:
+            print(f"  Merging split sentences across pages...")
+            merger = PageMerger(
+                model=config.merge_model,
+                host=config.ollama_host,
+                context_chars=config.merge_context_chars
+            )
+            merged_path = merger.process_file(md_path)
+            print(f"    -> {merged_path}")
+
     if config.output_mode in ("jsonl", "both"):
         print(f"  Generating JSONL blocks...")
         jsonl_path = writer.write_ir_jsonl(ir_doc, output_dir)
@@ -123,6 +135,9 @@ Examples:
 
   # Full IR output with chunks
   python main.py document.pdf --output_mode both --chunk
+
+  # Merge split sentences across pages
+  python main.py document.pdf --merge_pages
 
   # With translation
   python main.py document.pdf --translate --target_lang ko
@@ -166,6 +181,10 @@ Examples:
     parser.add_argument("--dedup", action="store_true",
                         help="Skip duplicate documents")
 
+    # Page merging
+    parser.add_argument("--merge_pages", action="store_true",
+                        help="Merge split sentences across page boundaries")
+
     # Processing options
     parser.add_argument("--dpi", type=int, default=200,
                         help="PDF rendering DPI (default: 200)")
@@ -186,6 +205,7 @@ Examples:
         target_lang=args.target_lang,
         bilingual_output=args.bilingual,
         enable_dedup=args.dedup,
+        merge_pages=args.merge_pages,
         dpi=args.dpi,
         vlm_model=args.vlm_model
     )

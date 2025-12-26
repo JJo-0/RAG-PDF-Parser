@@ -10,6 +10,7 @@ RAG(Retrieval-Augmented Generation)용 고급 PDF 파서. 학술 논문의 레�
 - 🎯 **정확한 레이아웃 감지**: Qwen3-VL Vision Language Model 기반 문서 파싱
 - 📝 **다국어 OCR**: PaddleOCR 기반 한국어/영어/중국어 지원
 - 🖼️ **AI 이미지 캡션**: Ollama VLM을 활용한 구조화된 캡션 생성
+- 🔀 **지능형 페이지 병합**: LLM 기반 페이지 경계 문장 자동 병합
 - 🌐 **양방향 번역**: Ollama를 사용한 영어↔한국어 번역
 - 📊 **표/차트 추출**: 표와 차트 데이터 구조화 추출
 - 🔗 **Provenance Tracking**: IR(Intermediate Representation) 기반 출처 추적
@@ -77,6 +78,9 @@ python main.py input.pdf --output_mode jsonl
 # 마크다운 + JSONL + 청킹
 python main.py input.pdf --output_mode both --chunk --with_anchors
 
+# 페이지 경계 문장 자동 병합 (권장)
+python main.py input.pdf --merge_pages
+
 # 고품질 처리 (고해상도 + 번역)
 python main.py input.pdf --dpi 300 --translate --target_lang en
 
@@ -109,6 +113,9 @@ done
 
 중복 제거:
   --dedup                 중복 블록 제거
+
+페이지 병합:
+  --merge_pages           페이지 경계의 끊긴 문장 자동 병합 (LLM 기반)
 
 처리 옵션:
   --dpi N                 PDF 렌더링 DPI (기본: 200)
