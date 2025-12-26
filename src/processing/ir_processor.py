@@ -18,7 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from src.models.block import IRBlock, IRPage, IRDocument
 from src.config import ProcessorConfig
-from src.layout.detector import LayoutDetector
+from src.layout.qwen_parser import QwenVLDocumentParser
+from src.layout.base_parser import BaseDocumentParser
 from src.text.extractor import TextExtractor
 from src.captioning.vlm import ImageCaptioner
 from src.table.extractor import TableExtractor
@@ -49,9 +50,10 @@ class IRPipelineProcessor:
         print("Initializing IR Pipeline Processor...")
         print(f"  - Output mode: {self.config.output_mode}")
         print(f"  - DPI: {self.config.dpi}")
+        print(f"  - Using Qwen3-VL document parser")
 
         # Initialize components
-        self.layout_detector = LayoutDetector()
+        self.parser = self._create_parser()
         self.text_extractor = TextExtractor(lang=self.config.ocr_lang)
         self.captioner = ImageCaptioner(
             model=self.config.vlm_model,
@@ -77,6 +79,19 @@ class IRPipelineProcessor:
 
         # Processing state
         self.current_section = None
+
+    def _create_parser(self) -> BaseDocumentParser:
+        """
+        Create Qwen3-VL document parser.
+
+        Returns:
+            QwenVLDocumentParser instance
+        """
+        return QwenVLDocumentParser(
+            model=self.config.vlm_model,
+            ollama_host=self.config.ollama_host,
+            timeout=120  # Longer timeout for full-page parsing
+        )
 
     def process_document(self, doc: fitz.Document, doc_id: Optional[str] = None) -> IRDocument:
         """
@@ -164,9 +179,11 @@ class IRPipelineProcessor:
             blocks=[]
         )
 
-        # Detect layout and get IR blocks
-        ir_blocks = self.layout_detector.detect_with_metadata(
-            image, page_num, doc_id, self.config.dpi
+        # Parse page using Qwen3-VL parser
+        ir_blocks = self.parser.parse_page(
+            page_image=image,
+            page_num=page_num,
+            doc_id=doc_id
         )
 
         if not ir_blocks:
@@ -196,19 +213,37 @@ class IRPipelineProcessor:
         text_blocks = [b for b in ir_blocks if b.type in self.TEXT_TYPES]
         visual_blocks = [b for b in ir_blocks if b.type in self.VISUAL_TYPES]
 
-        # Batch OCR for text blocks
+        # Batch OCR for text blocks using PaddleOCR (only if bbox available)
+        # Qwen3-VL parser doesn't provide bbox, so skip OCR for those blocks
         if text_blocks:
-            text_bboxes = [b.bbox for b in text_blocks]
-            ocr_results = self.text_extractor.extract_text_batch(image, text_bboxes)
+            # Filter blocks with valid bbox
+            blocks_with_bbox = [b for b in text_blocks if b.bbox is not None]
+            blocks_without_bbox = [b for b in text_blocks if b.bbox is None]
 
-            for block, (text, lines, confidence) in zip(text_blocks, ocr_results):
-                block.text = text
-                block.ocr_lines = lines
-                block.confidence = confidence
-                block.lang = self.text_extractor.detect_language(text)
+            # OCR for blocks with bbox
+            if blocks_with_bbox:
+                text_bboxes = [b.bbox for b in blocks_with_bbox]
+                ocr_results = self.text_extractor.extract_text_batch(image, text_bboxes)
 
-                # Format as markdown based on type
-                block.markdown = self._format_text_markdown(block)
+                for block, (text, lines, confidence) in zip(blocks_with_bbox, ocr_results):
+                    block.text = text
+                    block.ocr_lines = lines
+                    block.confidence = confidence
+                    block.lang = self.text_extractor.detect_language(text)
+
+                    # Format as markdown based on type
+                    block.markdown = self._format_text_markdown(block)
+
+            # For blocks without bbox (from VLM parsers like Qwen3-VL)
+            # Text is already provided by the parser, just format markdown
+            for block in blocks_without_bbox:
+                if not block.markdown:
+                    block.markdown = self._format_text_markdown(block)
+                # Set default confidence and lang
+                if block.confidence == 0.0:
+                    block.confidence = 0.95  # VLM parsers are generally accurate
+                if block.lang == "unknown" and block.text:
+                    block.lang = self.text_extractor.detect_language(block.text)
 
         # Process visual blocks (with VLM captioning)
         if visual_blocks:
@@ -216,7 +251,8 @@ class IRPipelineProcessor:
 
         # Combine and sort all blocks
         all_blocks = text_blocks + visual_blocks
-        all_blocks.sort(key=lambda b: b.reading_order)
+        # Handle None values in reading_order (e.g., headers/footers may not have order)
+        all_blocks.sort(key=lambda b: b.reading_order if b.reading_order is not None else 999)
 
         # Track section headers
         for block in all_blocks:
@@ -235,7 +271,7 @@ class IRPipelineProcessor:
         doc_id: str
     ):
         """
-        Process visual blocks with VLM captioning.
+        Process visual blocks with image saving and VLM captioning.
 
         Args:
             image: Source page image
@@ -247,7 +283,19 @@ class IRPipelineProcessor:
         crop_images = []
         valid_blocks = []
 
+        # Create images directory
+        images_dir = os.path.join(self.config.output_dir, "images")
+        os.makedirs(images_dir, exist_ok=True)
+
         for block in blocks:
+            # Skip blocks without bbox (from VLM parsers)
+            if block.bbox is None:
+                # VLM parser already provided caption/description
+                # Just set markdown if not already set
+                if not block.markdown:
+                    block.markdown = self._format_visual_markdown(block)
+                continue
+
             x1, y1, x2, y2 = [int(v) for v in block.bbox]
             x1 = max(0, x1)
             y1 = max(0, y1)
@@ -258,6 +306,14 @@ class IRPipelineProcessor:
                 crop = image.crop((x1, y1, x2, y2))
                 crop_images.append(crop)
                 valid_blocks.append(block)
+
+                # Save image to file
+                filename = f"{doc_id}_p{page_num}_b{block.reading_order}.png"
+                save_path = os.path.join(images_dir, filename)
+                crop.save(save_path, "PNG")
+
+                # Set relative path for markdown
+                block.image_path = f"images/{filename}"
 
         if not crop_images:
             return
@@ -432,6 +488,11 @@ class IRPipelineProcessor:
 
             for block in page.blocks:
                 if block.type in self.VISUAL_TYPES:
+                    # Skip blocks without bbox (from VLM parsers like Qwen3-VL)
+                    if block.bbox is None:
+                        print(f"    [INFO] Skipping image save for {block.block_id} (VLM parser, no bbox)")
+                        continue
+
                     # Crop and save image
                     x1, y1, x2, y2 = [int(v) for v in block.bbox]
                     x1 = max(0, x1)

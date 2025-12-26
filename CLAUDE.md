@@ -13,8 +13,8 @@ RAG(Retrieval-Augmented Generation)용 PDF 파서. 학술 논문의 레이아웃
 ## 기술 스택
 | 역할 | 라이브러리 |
 |------|-----------|
-| Layout Detection | Surya (`vikparuchuri/surya_layout2`) |
-| OCR | PaddleOCR (한국어/영어) |
+| Layout Detection | Qwen3-VL Vision Language Model (JSON-forced 문서 파싱) |
+| OCR | PaddleOCR (한국어/영어/중국어) |
 | VLM Caption | Ollama (`qwen3-vl:8b`) - 구조화된 JSON 출력 |
 | Translation | Ollama (`gpt-oss:20b`) |
 | PDF 처리 | PyMuPDF (fitz) |
@@ -31,7 +31,9 @@ RAG/
 │   │   ├── block.py                 # IRBlock, IRPage, IRDocument
 │   │   └── chunk.py                 # IRChunk, ChunkingConfig
 │   ├── config.py                    # ProcessorConfig
-│   ├── layout/detector.py           # Surya 레이아웃 감지
+│   ├── layout/
+│   │   ├── base_parser.py           # 문서 파서 추상 인터페이스
+│   │   └── qwen_parser.py           # Qwen3-VL 문서 파서
 │   ├── text/extractor.py            # PaddleOCR 텍스트 추출
 │   ├── captioning/vlm.py            # 구조화된 VLM 캡션 생성
 │   ├── translation/translator.py   # 번역 모듈
@@ -86,7 +88,6 @@ python main.py document.pdf --output_mode both --chunk --with_anchors
 
 # 처리 옵션
 --dpi 200                             # PDF 렌더링 DPI
---ocr_lang korean                     # OCR 언어
 --vlm_model qwen3-vl:8b               # VLM 모델
 ```
 
@@ -180,20 +181,20 @@ ollama pull qwen2.5-coder:7b # 코드 리뷰
 ```
 
 ### GPU/CUDA
-- PaddleOCR GPU: `paddlepaddle-gpu` 설치 필요
-- Surya: CUDA 자동 감지
+- PaddleOCR GPU: `paddlepaddle-gpu` 설치 필요 (OCR 성능 향상)
 - GPU 스케줄러가 OOM 방지
 
 ## 데이터 플로우 (v2.0)
 ```
 PDF → [PyMuPDF] → 이미지 (DPI 설정 가능)
         ↓
-    [Surya] 레이아웃 감지 + Reading Order
+    [Qwen3-VL Document Parser] JSON-forced 문서 파싱
         ↓
     ┌──────────────────────────────┐
     │ IRBlock 생성 (provenance)    │
     ├──────────────────────────────┤
-    │ Text → [Batch OCR] + 좌표   │
+    │ Text → VLM 추출 (OCR X)     │
+    │ Table → [표 구조 인식]       │
     │ Image → [Structured VLM]    │
     └──────────────────────────────┘
         ↓

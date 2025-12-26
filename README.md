@@ -7,7 +7,7 @@ RAG(Retrieval-Augmented Generation)용 고급 PDF 파서. 학술 논문의 레�
 
 ## 주요 특징
 
-- 🎯 **정확한 레이아웃 감지**: Surya를 사용한 고정밀 레이아웃 분석
+- 🎯 **정확한 레이아웃 감지**: Qwen3-VL Vision Language Model 기반 문서 파싱
 - 📝 **다국어 OCR**: PaddleOCR 기반 한국어/영어/중국어 지원
 - 🖼️ **AI 이미지 캡션**: Ollama VLM을 활용한 구조화된 캡션 생성
 - 🌐 **양방향 번역**: Ollama를 사용한 영어↔한국어 번역
@@ -20,7 +20,7 @@ RAG(Retrieval-Augmented Generation)용 고급 PDF 파서. 학술 논문의 레�
 
 | 역할 | 라이브러리 |
 |------|-----------|
-| Layout Detection | Surya (`vikparuchuri/surya_layout2`) |
+| Layout Detection | Qwen3-VL Vision Language Model |
 | OCR | PaddleOCR (한국어/영어/중국어) |
 | VLM Caption | Ollama (`qwen3-vl:8b`) |
 | Translation | Ollama (`gpt-oss:20b`) |
@@ -112,7 +112,6 @@ done
 
 처리 옵션:
   --dpi N                 PDF 렌더링 DPI (기본: 200)
-  --ocr_lang LANG         OCR 언어: korean, en, ch (기본: korean)
   --vlm_model MODEL       VLM 모델 (기본: qwen3-vl:8b)
 ```
 
@@ -156,7 +155,8 @@ RAG/
 │   │   ├── block.py             # IRBlock, IRPage, IRDocument
 │   │   └── chunk.py             # IRChunk, ChunkingConfig
 │   ├── layout/
-│   │   └── detector.py          # Surya 레이아웃 감지
+│   │   ├── base_parser.py       # 문서 파서 추상 인터페이스
+│   │   └── qwen_parser.py       # Qwen3-VL 문서 파서
 │   ├── text/
 │   │   └── extractor.py         # PaddleOCR 텍스트 추출
 │   ├── captioning/

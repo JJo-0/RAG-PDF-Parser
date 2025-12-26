@@ -143,7 +143,9 @@ class ImageCaptioner:
     def caption(
         self,
         image_source: Union[str, Image.Image],
-        content_type: str = "generic"
+        content_type: str = "generic",
+        prompt: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None
     ) -> Optional[str]:
         """
         Generate a caption for the image using Ollama VLM.
@@ -151,6 +153,8 @@ class ImageCaptioner:
         Args:
             image_source: File path or PIL Image
             content_type: Type of content ("figure", "chart", "table", "formula", "generic")
+            prompt: Optional custom prompt (overrides content_type if provided)
+            options: Optional Ollama generation options (temperature, num_predict, etc.)
 
         Returns:
             Caption string or None if failed
@@ -162,18 +166,33 @@ class ImageCaptioner:
             return None
 
         try:
-            prompt = self._get_prompt(content_type)
+            # Use custom prompt if provided, otherwise use content_type prompt
+            if prompt is None:
+                prompt = self._get_prompt(content_type)
+            else:
+                prompt = prompt
+
+            # Default options for captions
+            default_options = {
+                "temperature": 0.3,  # Lower for more deterministic output
+                "num_predict": 500
+            }
+
+            # Override with custom options if provided
+            if options:
+                default_options.update(options)
 
             payload = {
                 "model": self.model,
                 "prompt": prompt,
                 "images": [image_base64],
                 "stream": False,
-                "options": {
-                    "temperature": 0.3,  # Lower for more deterministic output
-                    "num_predict": 500
-                }
+                "options": default_options
             }
+
+            # Add format constraint if options contain 'format'
+            if options and 'format' in options:
+                payload["format"] = options.pop('format')  # Remove from options, add to top level
 
             response = requests.post(
                 f"{self.host}/api/generate",
@@ -183,7 +202,11 @@ class ImageCaptioner:
             response.raise_for_status()
 
             result = response.json()
+            # Qwen3-VL may return content in 'thinking' field instead of 'response'
             caption = result.get("response", "").strip()
+            if not caption:
+                # Fallback to 'thinking' field (Qwen3 models)
+                caption = result.get("thinking", "").strip()
 
             # Try to extract clean text from JSON response
             if self.structured_output and content_type != "generic":

@@ -62,7 +62,7 @@ def process_file(pdf_path: str, config: ProcessorConfig, processor: IRPipelinePr
         output_dir = config.output_dir
     else:
         # New mode: create doc-specific directory
-        output_dir = writer.get_doc_output_dir(doc_id)
+        output_dir = os.path.join(config.output_dir, doc_id)
 
     # Save images
     print(f"  Saving images...")
@@ -72,10 +72,11 @@ def process_file(pdf_path: str, config: ProcessorConfig, processor: IRPipelinePr
     if config.output_mode in ("markdown", "both"):
         print(f"  Generating Markdown...")
         if config.output_mode == "markdown":
-            # Legacy filename format
+            # Default filename format
+            md_filename = f"{file_name}_qwenvl.md"
             md_path = writer.write_markdown(
                 ir_doc, output_dir, config.with_anchors,
-                filename=f"{file_name}.md"
+                filename=md_filename
             )
         else:
             md_path = writer.write_markdown(ir_doc, output_dir, config.with_anchors)
@@ -168,8 +169,6 @@ Examples:
     # Processing options
     parser.add_argument("--dpi", type=int, default=200,
                         help="PDF rendering DPI (default: 200)")
-    parser.add_argument("--ocr_lang", type=str, default="korean",
-                        help="OCR language (default: korean)")
     parser.add_argument("--vlm_model", type=str, default="qwen3-vl:8b",
                         help="VLM model for captioning (default: qwen3-vl:8b)")
 
@@ -188,7 +187,6 @@ Examples:
         bilingual_output=args.bilingual,
         enable_dedup=args.dedup,
         dpi=args.dpi,
-        ocr_lang=args.ocr_lang,
         vlm_model=args.vlm_model
     )
 

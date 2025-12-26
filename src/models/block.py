@@ -41,6 +41,9 @@ class IRBlock:
     confidence: float = 0.0              # OCR/detection confidence [0.0-1.0]
     source_hash: str = ""                # SHA256 of cropped image bytes
 
+    # Parser metadata
+    parser_source: str = "unknown"       # Parser that generated this block ("ppstructure"|"qwenvl")
+
     # Enrichment fields
     caption: Optional[str] = None        # VLM-generated caption for figures/charts
     caption_structured: Optional[Dict[str, Any]] = None  # Structured VLM output
@@ -52,6 +55,9 @@ class IRBlock:
 
     # OCR line-level details (for fine-grained retrieval)
     ocr_lines: Optional[List[Dict[str, Any]]] = None  # [{text, box, confidence}]
+
+    # Raw data from PPStructureV3 (for tables, includes HTML structure)
+    raw_data: Optional[Dict[str, Any]] = None  # e.g., {'structure': '<table>...</table>', 'bbox_list': [...]}
 
     def __post_init__(self):
         """Generate anchor if not provided."""
@@ -136,7 +142,8 @@ class IRPage:
 
     def get_blocks_sorted(self) -> List[IRBlock]:
         """Get blocks sorted by reading order."""
-        return sorted(self.blocks, key=lambda b: b.reading_order)
+        # Handle None values in reading_order (e.g., headers/footers may not have order)
+        return sorted(self.blocks, key=lambda b: b.reading_order if b.reading_order is not None else 999)
 
 
 @dataclass

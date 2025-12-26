@@ -262,7 +262,7 @@ class OutputWriter:
 
     def _block_to_markdown(self, block: IRBlock, with_anchors: bool = False) -> str:
         """
-        Convert a single block to markdown.
+        Convert a single block to markdown with type-specific formatting.
 
         Args:
             block: IRBlock to convert
@@ -271,21 +271,150 @@ class OutputWriter:
         Returns:
             Markdown string
         """
-        md = block.markdown or block.text or ""
+        # 1. Title blocks - use markdown headings
+        if block.type in ('title', 'doc_title'):
+            text = block.text or block.markdown or ""
+            return f"# {text.strip()}"
 
-        # Handle visual blocks without markdown
-        if not md and block.has_visual_content():
-            if block.image_path:
-                md = f"![{block.type}]({block.image_path})"
-            else:
-                md = f"[{block.type.title()}]"
+        elif block.type in ('section_title', 'paragraph_title'):
+            text = block.text or block.markdown or ""
+            return f"## {text.strip()}"
 
-            if block.caption:
-                md += f"\n\n*{block.caption}*"
+        # 2. Table blocks - convert HTML to markdown table
+        elif block.type == 'table':
+            return self._table_to_markdown(block)
 
-        # Add anchor if requested
-        if with_anchors and block.anchor and md:
-            md = f"{md} {block.anchor}"
+        # 3. Figure/chart blocks - embed images
+        elif block.type in ('figure', 'chart'):
+            return self._figure_to_markdown(block)
+
+        # 4. Header/footer blocks - use italic
+        elif block.type in ('header', 'footer'):
+            text = block.text or block.markdown or ""
+            return f"*{text.strip()}*"
+
+        # 5. Regular text blocks
+        else:
+            md = block.markdown or block.text or ""
+
+            # Add anchor if requested
+            if with_anchors and block.anchor and md:
+                md = f"{md} {block.anchor}"
+
+            return md
+
+    def _table_to_markdown(self, block: IRBlock) -> str:
+        """
+        Convert table block to markdown table format.
+
+        Args:
+            block: IRBlock of type 'table'
+
+        Returns:
+            Markdown table string
+        """
+        # Try to use PPStructureV3 HTML structure
+        if block.raw_data and 'structure' in block.raw_data:
+            html = block.raw_data['structure']
+            if html:
+                md_table = self._html_table_to_markdown(html)
+                if md_table:
+                    # Add caption if available
+                    if block.caption:
+                        md_table += f"\n\n*Table: {block.caption}*"
+                    return md_table
+
+        # Fallback: Show table placeholder with text
+        caption_text = ""
+        if block.caption:
+            caption_text = f"\n\n*Table: {block.caption}*"
+
+        if block.text:
+            return f"[Table]\n\n```\n{block.text}\n```{caption_text}"
+        else:
+            return f"[Table]{caption_text}"
+
+    def _html_table_to_markdown(self, html: str) -> Optional[str]:
+        """
+        Convert HTML table to markdown table format.
+
+        Args:
+            html: HTML table string from PPStructureV3
+                Example: '<table><tr><td>A</td><td>B</td></tr></table>'
+
+        Returns:
+            Markdown table string or None if parsing fails
+        """
+        try:
+            from bs4 import BeautifulSoup
+
+            soup = BeautifulSoup(html, 'html.parser')
+            table = soup.find('table')
+            if not table:
+                return None
+
+            rows = []
+
+            # Process all rows
+            for tr in table.find_all('tr'):
+                cells = []
+                for td in tr.find_all(['td', 'th']):
+                    # Handle colspan
+                    colspan = int(td.get('colspan', 1))
+                    text = td.get_text(strip=True)
+                    cells.append(text)
+                    # Add empty cells for colspan
+                    for _ in range(colspan - 1):
+                        cells.append('')
+
+                if cells:
+                    rows.append(cells)
+
+            if not rows:
+                return None
+
+            # Generate markdown table
+            lines = []
+
+            # First row as header
+            header = rows[0]
+            lines.append('| ' + ' | '.join(header) + ' |')
+            lines.append('|' + '|'.join(['---'] * len(header)) + '|')
+
+            # Remaining rows
+            for row in rows[1:]:
+                # Pad to match header length
+                while len(row) < len(header):
+                    row.append('')
+                lines.append('| ' + ' | '.join(row[:len(header)]) + ' |')
+
+            return '\n'.join(lines)
+
+        except Exception as e:
+            print(f"    Warning: Failed to parse HTML table: {e}")
+            return None
+
+    def _figure_to_markdown(self, block: IRBlock) -> str:
+        """
+        Convert figure/chart block to markdown with image embedding.
+
+        Args:
+            block: IRBlock of type 'figure' or 'chart'
+
+        Returns:
+            Markdown string with image or caption
+        """
+        # Embed image if path is available
+        if block.image_path:
+            alt_text = block.caption or f"{block.type} on page {block.page}"
+            md = f"![{alt_text}]({block.image_path})"
+        else:
+            # Placeholder if no image
+            md = f"[{block.type.title()}]"
+
+        # Add VLM caption as separate paragraph
+        if block.caption:
+            md += f"\n\n*Figure: {block.caption}*"
 
         return md
 

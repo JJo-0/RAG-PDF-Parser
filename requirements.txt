@@ -1,7 +1,5 @@
-surya-ocr
-paddlepaddle
-paddleocr
 opencv-python
+tiktoken
 Pillow
 langchain-community
 langchain-core
@@ -12,3 +10,5 @@ httpx
 aiohttp
 # For viewer app
 streamlit
+# For HTML table parsing
+beautifulsoup4
